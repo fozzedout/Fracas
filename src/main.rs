@@ -159,9 +159,11 @@ async fn events() {
 
                 update_movement(&mut pieces);
                 update_attacks(&mut pieces);
-                
-                let bin = bincode::serialize(&pieces).unwrap();
-                call(&bin, port).await;
+
+                if port > 0 {
+                    let bin = bincode::serialize(&pieces).unwrap();
+                    call(&bin, port).await;
+                }
 
                 print_at(100, 2, format!("{:?}", mode));
                 logging_tail().await;
