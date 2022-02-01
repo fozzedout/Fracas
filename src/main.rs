@@ -13,13 +13,14 @@ use futures::{future::FutureExt, select, AsyncReadExt, AsyncWriteExt, StreamExt,
 use futures_timer::Delay;
 
 use crossterm::{
-    cursor::{Hide, MoveTo, Show},
+    cursor::{Hide, MoveTo, Show, MoveLeft},
     event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyCode, KeyEvent, self},
     execute,
     style::{Color, Print},
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
     Result,
 };
+use serde::{Serialize, Deserialize};
 
 fn now() -> u64 {
     SystemTime::now()
@@ -28,7 +29,7 @@ fn now() -> u64 {
         .as_secs()
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct Character {
     unique_id: u16,
 
@@ -158,6 +159,9 @@ async fn events() {
 
                 update_movement(&mut pieces);
                 update_attacks(&mut pieces);
+                
+                let bin = bincode::serialize(&pieces).unwrap();
+                call(&bin, port).await;
 
                 print_at(100, 2, format!("{:?}", mode));
                 logging_tail().await;
@@ -200,12 +204,16 @@ async fn events() {
                         match key_code {
                             KeyCode::Char('n') => {
                                 print_at(20, 1, "Connect to server port: ".to_string());
-                                port = read_line().unwrap().parse().unwrap();
-                                game_session_code = call(b"new game", port).await;
-                                print_at(50, 0, format!("Game Code: {game_session_code}"));
-
-                                command_state = CommandState::MainGame;
-
+                                port = match read_line().unwrap().parse() {
+                                    Ok(n) => n,
+                                    Err(_) => 0
+                                };
+                                if port > 0 {
+                                    game_session_code = call(b"new game", port).await;
+                                    print_at(50, 0, format!("Game Code: {game_session_code}"));
+    
+                                    command_state = CommandState::MainGame;
+                                }
                             },
                             KeyCode::Char('t') => { command_state = CommandState::Chat; }
                             KeyCode::Char('c') => { cls(); }
@@ -702,7 +710,13 @@ pub fn read_line() -> Result<String> {
                 break;
             }
             KeyCode::Char(c) => {
+                execute!(stdout(), Print(c),).unwrap();
                 line.push(c);
+            }
+            KeyCode::Backspace => {
+                execute!(stdout(), MoveLeft(1), Print(' '), MoveLeft(1),).unwrap();
+
+                line.pop();
             }
             _ => {}
         }
