@@ -160,9 +160,8 @@ async fn events() {
                 update_movement(&mut pieces);
                 update_attacks(&mut pieces);
 
-                if opponent_address.len() > 0 {
-                    let bin = bincode::serialize(&pieces).unwrap();
-                    call(&bin, &opponent_address).await;
+                if opponent_address.len() > 0 && pieces.len() > 0 {
+                    call(b"get updates", &opponent_address).await;
                 }
 
                 print_at(100, 2, format!("{:?}", mode));
@@ -342,7 +341,7 @@ fn color_reset() {
 
 fn rect_filled(draw: &str, x: u16, y: u16, width: u16, height: u16) {
     let fill = draw.repeat(width as usize);
-    print_at(60, 1, format!("s |{draw}| x{x} y{y} w{width} h{height}"));
+
     for i in y..y + height {
         print_at(x, i, &fill);
     }
@@ -632,7 +631,8 @@ async fn logging_tail() {
 }
 
 async fn call(send : &[u8], address : &String) -> String {
-    logging(String::from_utf8(send.to_vec()).unwrap_or(format!("{:?}", send))).await;
+    //logging(String::from_utf8(send.to_vec()).unwrap_or(format!("{:?}", send))).await;
+    logging(format!("Calling {address} with {}b", send.len())).await;
     match TcpStream::connect(address).await {
         Ok(stream) => {
             print_at(35, 0, "           ");
@@ -671,13 +671,17 @@ async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) 
 
     logging(format!("Buffer: {:?}", request)).await;
 
-    let mut response : String = String::new();
+    let mut response : Vec<u8> = Vec::new();
 
     let request_str = request.as_str();
     if request_str == "new game" {
         let id = format!("{:x}", fastrand::u128(..));
         println!("{id}");
-        response = id
+        response = id.into_bytes();
+
+    } else if request_str == "get update" {
+        response = bincode::serialize(&pieces).unwrap();
+
     } else if request_str.len() == 2 {
         let mut request_bytes = request_str.bytes();
         let chr = request_bytes.next().unwrap();
@@ -695,7 +699,7 @@ async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) 
     if response.len() > 0 {
         logging(format!("Sending response")).await;
     
-        stream.write(response.as_bytes()).await.unwrap();
+        stream.write( &response[..] ).await.unwrap();
         match stream.flush().await {
             Ok(x) => { logging(format!("Ok {:?}", x)).await; },
             Err(x) => { logging(format!("Err {:?}", x)).await; },
