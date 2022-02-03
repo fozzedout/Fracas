@@ -160,7 +160,7 @@ async fn events() {
                 update_movement(&mut pieces);
                 update_attacks(&mut pieces);
 
-                if opponent_address.len() > 0 && pieces.len() > 0 {
+                if opponent_address.len() > 0 {
                     call(b"get updates", &opponent_address).await;
                 }
 
@@ -630,29 +630,31 @@ async fn logging_tail() {
     }
 }
 
-async fn call(send : &[u8], address : &String) -> String {
-    //logging(String::from_utf8(send.to_vec()).unwrap_or(format!("{:?}", send))).await;
-    logging(format!("Calling {address} with {}b", send.len())).await;
+async fn callb(send : &[u8], address : &String) -> Vec<u8> {
     match TcpStream::connect(address).await {
         Ok(stream) => {
+            logging(format!("Calling {address} with {}b", send.len())).await;
             print_at(35, 0, "           ");
             let mut stream = stream;
             match AsyncWriteExt::write_all(&mut stream, send).await {
-                Ok(x) => print_at(80, 5, format!("Ok {:?}     ", x)),
-                Err(e) => print_at(80, 5, format!("Err {:?}     ", e)),
+                Ok(_) => (),
+                Err(e) => logging(format!("Ntwk Err {:?}", e)).await,
             }
-            //print_at(50, 0, "Waiting for game...");
+
             let mut buf = vec![0u8; 1024];
             let n = AsyncReadExt::read(&mut stream, &mut buf).await.unwrap();
-            let result = String::from_utf8(buf[..n].to_vec()).unwrap();
-            result
+            buf.truncate(n);
+            buf.to_vec()
         },
         Err(_) => {
             print_at(35, 0, "!Network 📶!");
-            "".to_string()
+            vec![]
         },
     }
+}
 
+async fn call(send : &[u8], address : &String) -> String {
+    String::from_utf8( callb(send, address).await ).unwrap()
 }
 
 async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) {
