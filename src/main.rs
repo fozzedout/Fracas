@@ -675,7 +675,7 @@ async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) 
 
     let request_str = request.as_str();
     if request_str == "new game" {
-        let id = fastrand::u128(..).to_string();
+        let id = format!("{:x}", fastrand::u128(..));
         println!("{id}");
         response = id
     } else if request_str.len() == 2 {
