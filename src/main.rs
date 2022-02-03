@@ -716,9 +716,11 @@ pub fn read_line() -> Result<String> {
                 line.push(c);
             }
             KeyCode::Backspace => {
-                execute!(stdout(), MoveLeft(1), Print(' '), MoveLeft(1),).unwrap();
-
-                line.pop();
+                if line.len() > 0 {
+                    execute!(stdout(), MoveLeft(1), Print(' '), MoveLeft(1),).unwrap();
+    
+                    line.pop();
+                }
             }
             _ => {}
         }
