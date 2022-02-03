@@ -142,7 +142,7 @@ async fn events() {
     let listening_port = listener.local_addr().unwrap().port();
     print_at(20, 0, format!("Port: {}", listening_port));
 
-    let mut port: u16 = 0;
+    let mut opponent_address: String = String::new();
 
     loop {
         let mut delay = Delay::new(Duration::from_millis(1_0)).fuse();
@@ -160,9 +160,9 @@ async fn events() {
                 update_movement(&mut pieces);
                 update_attacks(&mut pieces);
 
-                if port > 0 {
+                if opponent_address.len() > 0 {
                     let bin = bincode::serialize(&pieces).unwrap();
-                    call(&bin, port).await;
+                    call(&bin, &opponent_address).await;
                 }
 
                 print_at(100, 2, format!("{:?}", mode));
@@ -205,13 +205,14 @@ async fn events() {
                     CommandState::Menu => {
                         match key_code {
                             KeyCode::Char('n') => {
-                                print_at(20, 1, "Connect to server port: ".to_string());
-                                port = match read_line().unwrap().parse() {
+                                print_at(20, 1, "Connect to server-address:port : ".to_string());
+                                opponent_address = match read_line("localhost:") {
                                     Ok(n) => n,
-                                    Err(_) => 0
+                                    Err(_) => "".to_string()
                                 };
-                                if port > 0 {
-                                    game_session_code = call(b"new game", port).await;
+                                print_at(20, 1, "                                ".to_string());
+                                if opponent_address.len() > 0 {
+                                    game_session_code = call(b"new game", &opponent_address).await;
                                     print_at(50, 0, format!("Game Code: {game_session_code}"));
     
                                     command_state = CommandState::MainGame;
@@ -255,7 +256,7 @@ async fn events() {
 
                                 let code = format!("{c}{r}");
                                 let code = code.as_bytes();
-                                call(&code, port).await;
+                                call(&code, &opponent_address).await;
                                 command_state = CommandState::MainGame;
                             }
                         } else {
@@ -630,9 +631,9 @@ async fn logging_tail() {
     }
 }
 
-async fn call(send : &[u8], port : u16) -> String {
+async fn call(send : &[u8], address : &String) -> String {
     logging(String::from_utf8(send.to_vec()).unwrap_or(format!("{:?}", send))).await;
-    match TcpStream::connect(format!("127.0.0.1:{port}")).await {
+    match TcpStream::connect(address).await {
         Ok(stream) => {
             print_at(35, 0, "           ");
             let mut stream = stream;
@@ -704,8 +705,14 @@ async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) 
     logging(format!("Connection handled")).await;
 }
 
-pub fn read_line() -> Result<String> {
+pub fn read_line(s : &str) -> Result<String> {
     let mut line = String::new();
+
+    for c in s.chars() {
+        execute!(stdout(), Print(c),).unwrap();
+        line.push(c);
+    }
+
     while let Event::Key(KeyEvent { code, .. }) = event::read()? {
         match code {
             KeyCode::Enter => {
