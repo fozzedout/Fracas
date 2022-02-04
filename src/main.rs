@@ -154,18 +154,13 @@ async fn server(listener : TcpListener) {
 
 async fn events(listening_port : u16) {
     let mut pieces: Vec<Character> = Vec::new();
-    //generate_war(&mut pieces);
-
-    let mut mode: Color = Color::Green;
     let mut command_state: CommandState = CommandState::Menu;
     let mut reader = EventStream::new();
 
-    let mut game_session_code : String = String::new();
-    print_at(50, 0, format!("Game Code: | {}b | {}", 0, game_session_code));
+    let mut game_session_code : String;
+    let mut opponent_address: String = String::new();
 
     print_at(20, 0, format!("Port: {}", listening_port));
-
-    let mut opponent_address: String = String::new();
 
     loop {
         let mut delay = Delay::new(Duration::from_millis(1_00)).fuse();
@@ -188,11 +183,9 @@ async fn events(listening_port : u16) {
                     }
                 }
 
-                //let term_size = terminal::size().unwrap();
                 print_at(10 + (now() % 60) as u16, 2, format!(" Now: {:?} ", now() ));
                 render_grid(5, 4, &command_state);
 
-                print_at(100, 2, format!("{:?}", mode));
                 logging_tail().await;
                 stdout().flush().unwrap();
             },
@@ -213,7 +206,6 @@ async fn events(listening_port : u16) {
                             },
                             _ => ()
                         }
-
                     }
                     Some(Err(e)) => println!("Error: {:?}\r", e),
                     None => break,
@@ -248,17 +240,15 @@ async fn events(listening_port : u16) {
                             print_at(40,0,format!("Char: {}", c));
                             match c {
                                 'q' => command_state = CommandState::Menu,
-                                'r' => mode = Color::Red,
-                                'l' => mode = Color::Green,
                                 _ => command_state = CommandState::CharacterSelected(c)
                             }
                         }
                     },
                     CommandState::CharacterSelected(c) => {
                         let mut character = match c {
-                            'b' => generate_barbarian(0, mode),
-                            'a' => generate_archer(0, mode),
-                            'g' => generate_giant(0, mode),
+                            'b' => generate_barbarian(0, Color::Green),
+                            'a' => generate_archer(0, Color::Green),
+                            'g' => generate_giant(0, Color::Green),
                             _ => {
                                 // invalid entry, back out to main game
                                 command_state = CommandState::MainGame;
