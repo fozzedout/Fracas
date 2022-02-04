@@ -153,7 +153,7 @@ async fn server(listener : TcpListener) {
 }
 
 async fn events(listening_port : u16) {
-    let mut pieces: Vec<Character> = Vec::new();
+    let mut pieces: Vec<Character>;
     let mut command_state: CommandState = CommandState::Menu;
     let mut reader = EventStream::new();
 
@@ -214,13 +214,22 @@ async fn events(listening_port : u16) {
                 match command_state {
                     CommandState::Menu => {
                         match key_code {
-                            KeyCode::Char('n') => {
+                            KeyCode::Char('h') => {
+                                opponent_address = format!("localhost:{listening_port}");
+
+                                game_session_code = call(b"new game", &opponent_address).await;
+                                print_at(50, 0, format!("Game Code: {game_session_code}"));
+
+                                command_state = CommandState::MainGame;
+                            },
+                            KeyCode::Char('c') => {
                                 print_at(20, 1, "Connect to server-address:port : ".to_string());
                                 opponent_address = match read_line("localhost:") {
                                     Ok(n) => n,
                                     Err(_) => "".to_string()
                                 };
-                                print_at(20, 1, "                                ".to_string());
+                                print_at(20, 1, " ".repeat(50));
+
                                 if opponent_address.len() > 0 {
                                     game_session_code = call(b"new game", &opponent_address).await;
                                     print_at(50, 0, format!("Game Code: {game_session_code}"));
@@ -229,7 +238,6 @@ async fn events(listening_port : u16) {
                                 }
                             },
                             KeyCode::Char('t') => { command_state = CommandState::Chat; }
-                            KeyCode::Char('c') => { cls(); }
                             KeyCode::Char('q') => break,
                             _ => (),
                         }
@@ -260,7 +268,7 @@ async fn events(listening_port : u16) {
                             if r >= '1' && r <= '9' {
                                 let r_val : u32 = r as u32;
                                 character.y = ((r_val - 48) * 2) as i16;
-                                pieces.push(character);
+                                // pieces.push(character);
 
                                 let code = format!("{c}{r}");
                                 let code = code.as_bytes();
@@ -736,7 +744,7 @@ pub fn read_line(s : &str) -> Result<String> {
     let mut line = String::new();
 
     // clear input area of 30 chars and then reset the cursor back to the start for input
-    queue!(stdout(), Print("                              "), MoveLeft(30), ).unwrap();
+    queue!(stdout(), Print(" ".repeat(30)), MoveLeft(30), ).unwrap();
 
     for c in s.chars() {
         queue!(stdout(), Print(c),).unwrap();
