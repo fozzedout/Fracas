@@ -735,10 +735,14 @@ async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) 
 pub fn read_line(s : &str) -> Result<String> {
     let mut line = String::new();
 
+    // clear input area of 30 chars and then reset the cursor back to the start for input
+    queue!(stdout(), Print("                              "), MoveLeft(30), ).unwrap();
+
     for c in s.chars() {
-        execute!(stdout(), Print(c),).unwrap();
+        queue!(stdout(), Print(c),).unwrap();
         line.push(c);
     }
+    stdout().flush().unwrap();
 
     while let Event::Key(KeyEvent { code, .. }) = event::read()? {
         match code {
