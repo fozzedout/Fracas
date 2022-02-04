@@ -1,13 +1,13 @@
 use std::{
     fmt::Display,
-    io::stdout,
+    io::{stdout, Write},
     ops::Range,
     time::{Duration, SystemTime},
 };
 
 use async_std::{
     net::{TcpStream, TcpListener},
-    task::block_on,
+    task::{block_on, spawn},
 };
 use futures::{future::FutureExt, select, AsyncReadExt, AsyncWriteExt, StreamExt, pin_mut};
 use futures_timer::Delay;
@@ -18,7 +18,7 @@ use crossterm::{
     execute,
     style::{Color, Print},
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
-    Result,
+    Result, queue,
 };
 use serde::{Serialize, Deserialize};
 
@@ -127,7 +127,32 @@ fn generate_giant(y: i16, c: Color) -> Character {
     }
 }
 
-async fn events() {
+async fn server(listener : TcpListener) {
+    let mut pieces: Vec<Character> = Vec::new();
+
+    loop {
+        let mut delay = Delay::new(Duration::from_millis(1_0)).fuse();
+        let nla_event = listener.accept().fuse();
+        pin_mut!(nla_event);
+
+        select! {
+            _ = delay => {
+                update_movement(&mut pieces);
+                update_attacks(&mut pieces);
+            },
+            nla_handler = nla_event => {
+                let stream = match nla_handler {
+                    Ok(e) => e.0,
+                    Err(_) => continue,
+                };
+                handle_connection(stream, &mut pieces).await;
+            },
+        }
+
+    }
+}
+
+async fn events(listening_port : u16) {
     let mut pieces: Vec<Character> = Vec::new();
     //generate_war(&mut pieces);
 
@@ -138,44 +163,38 @@ async fn events() {
     let mut game_session_code : String = String::new();
     print_at(50, 0, format!("Game Code: | {}b | {}", 0, game_session_code));
 
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let listening_port = listener.local_addr().unwrap().port();
     print_at(20, 0, format!("Port: {}", listening_port));
 
     let mut opponent_address: String = String::new();
 
     loop {
-        let mut delay = Delay::new(Duration::from_millis(1_0)).fuse();
+        let mut delay = Delay::new(Duration::from_millis(1_00)).fuse();
         let mut term_event = reader.next().fuse();
-        let nla_event = listener.accept().fuse();
-        pin_mut!(nla_event);
 
         select! {
             _ = delay => {
                 // updates every tick of delay
+                if command_state != CommandState::Menu {
+                    if opponent_address.len() > 0 {
+                        let raw = callb(b"update", &opponent_address).await;
+                        pieces = match bincode::deserialize(&raw) {
+                            Ok(f) => f,
+                            Err(e) => {
+                                logging(format!("Error deserializing : {:?}", e)).await;
+                                continue;
+                            },
+                        };
+                        render_grid_pieces(5, 4, &pieces);
+                    }
+                }
 
                 //let term_size = terminal::size().unwrap();
                 print_at(10 + (now() % 60) as u16, 2, format!(" Now: {:?} ", now() ));
-
-                update_movement(&mut pieces);
-                update_attacks(&mut pieces);
-
-                if opponent_address.len() > 0 {
-                    call(b"get updates", &opponent_address).await;
-                }
+                render_grid(5, 4, &command_state);
 
                 print_at(100, 2, format!("{:?}", mode));
                 logging_tail().await;
-
-                render_grid(5, 4, &pieces, &command_state);
-            },
-            nla_handler = nla_event => {
-                let stream = match nla_handler {
-                    Ok(e) => e.0,
-                    Err(_) => continue,
-                };
-
-                handle_connection(stream, &mut pieces).await;
+                stdout().flush().unwrap();
             },
             term_handler = term_event => {
                 let mut key_code : KeyCode = KeyCode::Null;
@@ -274,6 +293,11 @@ async fn events() {
 }
 
 fn main() -> Result<()> {
+    let listener = block_on( async { TcpListener::bind("127.0.0.1:0").await.unwrap() } );
+    let listening_port = listener.local_addr().unwrap().port();
+
+    spawn(server(listener));
+
     enable_raw_mode()?;
 
     execute!(stdout(), EnableMouseCapture, Hide)?;
@@ -281,7 +305,7 @@ fn main() -> Result<()> {
     color_set(Color::Reset, Color::Black);
     cls();
 
-    async_std::task::block_on(events());
+    block_on(events(listening_port));
 
     execute!(stdout(), DisableMouseCapture, Show)?;
 
@@ -293,7 +317,8 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn render_grid(x: u16, y: u16, pieces: &Vec<Character>, command_state: &CommandState) {
+
+fn render_grid(x: u16, y: u16, command_state: &CommandState) {
     // play area is a 70x20
 
     print_at(0, 0, format!("{:?}         ", command_state));
@@ -305,8 +330,14 @@ fn render_grid(x: u16, y: u16, pieces: &Vec<Character>, command_state: &CommandS
     }
     color_set(Color::White, Color::Black);
     rect_filled(" ", x, y, 70, 20);
-    draw_line('░', x + 5, y, x + 5, y + 20);
-    draw_line('░', x + 65, y, x + 65, y + 20);
+    draw_line('░', x + 5, y, x + 5, y + 19);
+    draw_line('░', x + 65, y, x + 65, y + 19);
+
+    color_reset();
+}
+
+fn render_grid_pieces(x: u16, y: u16, pieces: &Vec<Character>) {
+    // assumes render_grid() has already been called
 
     for p in pieces {
         if p.hp > 0 {
@@ -319,15 +350,15 @@ fn render_grid(x: u16, y: u16, pieces: &Vec<Character>, command_state: &CommandS
 }
 
 fn cls() {
-    execute!(stdout(), Clear(ClearType::All)).unwrap();
+    queue!(stdout(), Clear(ClearType::All)).unwrap();
 }
 
 fn print_at<T: Display>(x: u16, y: u16, s: T) {
-    execute!(stdout(), MoveTo(x, y), Print(s),).unwrap();
+    queue!(stdout(), MoveTo(x, y), Print(s),).unwrap();
 }
 
 fn color_set(fg: Color, bg: Color) {
-    execute!(
+    queue!(
         stdout(),
         crossterm::style::SetBackgroundColor(bg),
         crossterm::style::SetForegroundColor(fg),
@@ -336,7 +367,7 @@ fn color_set(fg: Color, bg: Color) {
 }
 
 fn color_reset() {
-    execute!(stdout(), crossterm::style::ResetColor,).unwrap();
+    queue!(stdout(), crossterm::style::ResetColor,).unwrap();
 }
 
 fn rect_filled(draw: &str, x: u16, y: u16, width: u16, height: u16) {
@@ -681,7 +712,7 @@ async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) 
         println!("{id}");
         response = id.into_bytes();
 
-    } else if request_str == "get update" {
+    } else if request_str == "update" {
         response = bincode::serialize(&pieces).unwrap();
 
     } else if request_str.len() == 2 {
