@@ -160,7 +160,9 @@ async fn events(listening_port : u16) {
     let mut reader = EventStream::new();
 
     let mut game_session_code : String;
-    let mut opponent_address: String = String::new();
+    let mut connection_address: String = String::new();
+
+    let mut piece_colour : Color = Color::Green;
 
     print_at(20, 0, format!("Port: {}", listening_port));
 
@@ -172,8 +174,8 @@ async fn events(listening_port : u16) {
             _ = delay => {
                 // updates every tick of delay
                 if command_state != CommandState::Menu {
-                    if opponent_address.len() > 0 {
-                        let raw = callb(b"update", &opponent_address).await;
+                    if connection_address.len() > 0 {
+                        let raw = callb(b"update", &connection_address).await;
                         pieces = match bincode::deserialize(&raw) {
                             Ok(f) => f,
                             Err(e) => {
@@ -217,23 +219,26 @@ async fn events(listening_port : u16) {
                     CommandState::Menu => {
                         match key_code {
                             KeyCode::Char('h') => {
-                                opponent_address = format!("localhost:{listening_port}");
+                                piece_colour = Color::Green;
+                                connection_address = format!("localhost:{listening_port}");
 
-                                game_session_code = call(b"new game", &opponent_address).await;
+                                game_session_code = call(b"new game", &connection_address).await;
                                 print_at(50, 0, format!("Game Code: {game_session_code}"));
 
                                 command_state = CommandState::MainGame;
                             },
                             KeyCode::Char('c') => {
                                 print_at(20, 1, "Connect to server-address:port : ".to_string());
-                                opponent_address = match read_line("localhost:") {
+                                connection_address = match read_line("localhost:") {
                                     Ok(n) => n,
                                     Err(_) => "".to_string()
                                 };
                                 print_at(20, 1, " ".repeat(50));
 
-                                if opponent_address.len() > 0 {
-                                    game_session_code = call(b"new game", &opponent_address).await;
+                                if connection_address.len() > 0 {
+                                    piece_colour = Color::Red;
+
+                                    game_session_code = call(b"new game", &connection_address).await;
                                     print_at(50, 0, format!("Game Code: {game_session_code}"));
     
                                     command_state = CommandState::MainGame;
@@ -256,9 +261,9 @@ async fn events(listening_port : u16) {
                     },
                     CommandState::CharacterSelected(c) => {
                         let mut character = match c {
-                            'b' => generate_barbarian(0, Color::Green),
-                            'a' => generate_archer(0, Color::Green),
-                            'g' => generate_giant(0, Color::Green),
+                            'b' => generate_barbarian(0, piece_colour),
+                            'a' => generate_archer(0, piece_colour),
+                            'g' => generate_giant(0, piece_colour),
                             _ => {
                                 // invalid entry, back out to main game
                                 command_state = CommandState::MainGame;
@@ -274,7 +279,7 @@ async fn events(listening_port : u16) {
 
                                 let code = format!("{c}{r}");
                                 let code = code.as_bytes();
-                                call(&code, &opponent_address).await;
+                                call(&code, &connection_address).await;
                                 command_state = CommandState::MainGame;
                             }
                         } else {
@@ -730,7 +735,7 @@ async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) 
     }
 
     if response.len() > 0 {
-        logging(format!("👂 Sending response")).await;
+        logging(format!("👂 Sending response {}b", response.len())).await;
     
         stream.write( &response[..] ).await.unwrap();
         match stream.flush().await {
