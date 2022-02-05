@@ -174,6 +174,9 @@ async fn events(listening_port : u16) {
             _ = delay => {
                 // updates every tick of delay
                 if command_state != CommandState::Menu {
+                    print_at(10 + (now() % 60) as u16, 2, format!(" Now: {:?} ", now() ));
+                    render_grid(5, 4, &command_state);
+    
                     if connection_address.len() > 0 {
                         let raw = callb(b"update", &connection_address).await;
                         pieces = match bincode::deserialize(&raw) {
@@ -189,19 +192,16 @@ async fn events(listening_port : u16) {
                                 piece_colour, 
                                 pieces
                                     .iter()
-                                    .filter(|x| x.color == Color::Green)
+                                    .filter(|x| x.hp > 0 && x.color == Color::Green)
                                     .count(), 
                                 pieces
                                     .iter()
-                                    .filter(|x| x.color == Color::Red)
+                                    .filter(|x| x.hp > 0 && x.color == Color::Red)
                                     .count() 
                         ));
                         render_grid_pieces(5, 4, &pieces);
                     }
                 }
-
-                print_at(10 + (now() % 60) as u16, 2, format!(" Now: {:?} ", now() ));
-                render_grid(5, 4, &command_state);
 
                 logging_tail().await;
                 stdout().flush().unwrap();
@@ -357,7 +357,7 @@ fn render_grid(x: u16, y: u16, command_state: &CommandState) {
 }
 
 fn render_grid_pieces(x: u16, y: u16, pieces: &Vec<Character>) {
-    // assumes render_grid() has already been called
+    // !!! IMPORTANT: render_grid() MUST be called first
 
     for p in pieces {
         if p.hp > 0 {
