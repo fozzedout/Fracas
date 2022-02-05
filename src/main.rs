@@ -155,7 +155,7 @@ async fn server(listener : TcpListener) {
 }
 
 async fn events(listening_port : u16) {
-    let mut pieces: Vec<Character>;
+    let mut pieces: Vec<Character> = Vec::new();
     let mut command_state: CommandState = CommandState::Menu;
     let mut reader = EventStream::new();
 
@@ -174,8 +174,6 @@ async fn events(listening_port : u16) {
             _ = delay => {
                 // updates every tick of delay
                 if command_state != CommandState::Menu {
-                    print_at(10 + (now() % 60) as u16, 2, format!(" Now: {:?} ", now() ));
-                    render_grid(5, 4, &command_state);
     
                     if connection_address.len() > 0 {
                         let raw = callb(b"update", &connection_address).await;
@@ -186,21 +184,24 @@ async fn events(listening_port : u16) {
                                 continue;
                             },
                         };
-                        print_at(1, 1, 
-                            format!(
-                                "You are {:?}  |  Green {}    Red {}   ",
-                                piece_colour, 
-                                pieces
-                                    .iter()
-                                    .filter(|x| x.hp > 0 && x.color == Color::Green)
-                                    .count(), 
-                                pieces
-                                    .iter()
-                                    .filter(|x| x.hp > 0 && x.color == Color::Red)
-                                    .count()
-                        ));
-                        render_grid_pieces(5, 4, &pieces);
                     }
+
+                    print_at(10 + (now() % 60) as u16, 2, format!(" Now: {:?} ", now() ));
+                    render_grid(5, 4, &command_state);
+                    print_at(1, 1, 
+                        format!(
+                            "You are {:?}  |  Green {}    Red {}   ",
+                            piece_colour, 
+                            pieces
+                                .iter()
+                                .filter(|x| x.hp > 0 && x.color == Color::Green)
+                                .count(), 
+                            pieces
+                                .iter()
+                                .filter(|x| x.hp > 0 && x.color == Color::Red)
+                                .count()
+                        ));
+                    render_grid_pieces(5, 4, &pieces);
                 }
 
                 logging_tail().await;
@@ -347,12 +348,12 @@ fn render_grid(x: u16, y: u16, command_state: &CommandState) {
         print_at(x - 1, y + (i * 2), i.to_string());
         //print_at(x+71, y+(i*2), i.to_string());
     }
-    color_set(Color::White, Color::Black);
+    //color_set(Color::White, Color::Black);
     rect_filled(" ", x, y, 70, 20);
     draw_line('░', x + 5, y, x + 5, y + 19);
     draw_line('░', x + 65, y, x + 65, y + 19);
 
-    color_reset();
+    //color_reset();
 }
 
 fn render_grid_pieces(x: u16, y: u16, pieces: &Vec<Character>) {
@@ -681,18 +682,20 @@ async fn logging_tail() {
 }
 
 async fn callb(send : &[u8], address : &String) -> Vec<u8> {
-    logging(format!("👄 Calling {address} with {}b", send.len())).await;
     match TcpStream::connect(address).await {
         Ok(stream) => {
             print_at(35, 0, "           ");
             let mut stream = stream;
             match AsyncWriteExt::write_all(&mut stream, send).await {
                 Ok(_) => (),
-                Err(e) => logging(format!("👄 Ntwk Err {:?}", e)).await,
+                Err(e) => logging(format!("👄 Err Write {:?}", e)).await,
             }
 
             let mut buf = vec![0u8; 1024];
-            let n = AsyncReadExt::read(&mut stream, &mut buf).await.unwrap();
+            let n = match AsyncReadExt::read(&mut stream, &mut buf).await {
+                Ok(n) => n,
+                Err(e) => { logging(format!("👄 Err Write {:?}", e)).await; 0 },
+            };
             buf.truncate(n);
             buf.to_vec()
         },
@@ -708,20 +711,17 @@ async fn call(send : &[u8], address : &String) -> String {
 }
 
 async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) {
-    logging("👂 Incoming connection".to_string()).await;
     let mut buffer = vec![0; 1024];
 
     let size = match stream.read(&mut buffer).await {
-        Ok(x) => { logging(format!("👂 Ok {:?}", x)).await; x },
-        Err(x) => { logging(format!("👂 Err {:?}", x)).await; 0 },
+        Ok(x) => { x },
+        Err(x) => { logging(format!("👂 Err Read {:?}", x)).await; 0 },
     };
 
     let request = match String::from_utf8(buffer[..size].to_vec()) {
         Ok(r) => r,
         Err(_) => "".to_string(),
     };
-
-    logging(format!("👂 Buffer: {:?}", request)).await;
 
     let mut response : Vec<u8> = Vec::new();
 
@@ -741,8 +741,6 @@ async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) 
         let y: i16 = (request_bytes.next().unwrap() as i16 - 48) * 2;
         let col = if col == b'r' { Color::Red } else { Color::Green };
 
-        logging(format!("👂 Character: {chr}   y: {y}    color: {col:?}")).await;
-
         match chr {
             b'g' => { pieces.push( generate_giant(y as i16, col) ); },
             b'b' => { pieces.push( generate_barbarian(y as i16, col) ); },
@@ -752,16 +750,12 @@ async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) 
     }
 
     if response.len() > 0 {
-        logging(format!("👂 Sending response {}b", response.len())).await;
-    
         stream.write( &response[..] ).await.unwrap();
         match stream.flush().await {
-            Ok(x) => { logging(format!("Ok {:?}", x)).await; },
-            Err(x) => { logging(format!("Err {:?}", x)).await; },
+            Ok(_) => (),
+            Err(x) => { logging(format!("👂 Err Write {:?}", x)).await; },
         }
     }
-
-    logging(format!("👂 Connection handled")).await;
 }
 
 pub fn read_line(s : &str) -> Result<String> {
