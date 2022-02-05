@@ -167,7 +167,7 @@ async fn events(listening_port : u16) {
     print_at(20, 0, format!("Port: {}", listening_port));
 
     loop {
-        let mut delay = Delay::new(Duration::from_millis(1_000)).fuse();
+        let mut delay = Delay::new(Duration::from_millis(1_00)).fuse();
         let mut term_event = reader.next().fuse();
 
         select! {
@@ -197,7 +197,7 @@ async fn events(listening_port : u16) {
                                 pieces
                                     .iter()
                                     .filter(|x| x.hp > 0 && x.color == Color::Red)
-                                    .count() 
+                                    .count()
                         ));
                         render_grid_pieces(5, 4, &pieces);
                     }
@@ -340,7 +340,6 @@ fn main() -> Result<()> {
 
 fn render_grid(x: u16, y: u16, command_state: &CommandState) {
     // play area is a 70x20
-
     print_at(0, 0, format!("{:?}         ", command_state));
 
     rect_outline('█', x - 1, y - 1, 70 + 2, 20 + 2);
