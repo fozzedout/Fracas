@@ -137,8 +137,10 @@ async fn server(listener : TcpListener) {
 
         select! {
             _ = delay => {
-                update_movement(&mut pieces);
-                update_attacks(&mut pieces);
+                if pieces.len() > 1 {
+                    update_movement(&mut pieces);
+                    update_attacks(&mut pieces);
+                }
             },
             nla_handler = nla_event => {
                 let stream = match nla_handler {
@@ -163,7 +165,7 @@ async fn events(listening_port : u16) {
     print_at(20, 0, format!("Port: {}", listening_port));
 
     loop {
-        let mut delay = Delay::new(Duration::from_millis(1_00)).fuse();
+        let mut delay = Delay::new(Duration::from_millis(1_000)).fuse();
         let mut term_event = reader.next().fuse();
 
         select! {
@@ -654,20 +656,20 @@ async fn logging_tail() {
 
     let mut j = 0;
     for i in start_line..lines.len() {
-        print_at(80, (j + 4) as u16, format!("{}               ", lines[i]));
+        print_at(80, (j + 4) as u16, format!("{:<50}", lines[i]));
         j += 1;
     }
 }
 
 async fn callb(send : &[u8], address : &String) -> Vec<u8> {
+    logging(format!("👄 Calling {address} with {}b", send.len())).await;
     match TcpStream::connect(address).await {
         Ok(stream) => {
-            logging(format!("Calling {address} with {}b", send.len())).await;
             print_at(35, 0, "           ");
             let mut stream = stream;
             match AsyncWriteExt::write_all(&mut stream, send).await {
                 Ok(_) => (),
-                Err(e) => logging(format!("Ntwk Err {:?}", e)).await,
+                Err(e) => logging(format!("👄 Ntwk Err {:?}", e)).await,
             }
 
             let mut buf = vec![0u8; 1024];
@@ -687,12 +689,12 @@ async fn call(send : &[u8], address : &String) -> String {
 }
 
 async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) {
-    logging("Incoming connection".to_string()).await;
+    logging("👂 Incoming connection".to_string()).await;
     let mut buffer = vec![0; 1024];
 
     let size = match stream.read(&mut buffer).await {
-        Ok(x) => { logging(format!("Ok {:?}", x)).await; x },
-        Err(x) => { logging(format!("Err {:?}", x)).await; 0 },
+        Ok(x) => { logging(format!("👂 Ok {:?}", x)).await; x },
+        Err(x) => { logging(format!("👂 Err {:?}", x)).await; 0 },
     };
 
     let request = match String::from_utf8(buffer[..size].to_vec()) {
@@ -700,7 +702,7 @@ async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) 
         Err(_) => "".to_string(),
     };
 
-    logging(format!("Buffer: {:?}", request)).await;
+    logging(format!("👂 Buffer: {:?}", request)).await;
 
     let mut response : Vec<u8> = Vec::new();
 
@@ -717,7 +719,7 @@ async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) 
         let mut request_bytes = request_str.bytes();
         let chr = request_bytes.next().unwrap();
         let y: i16 = (request_bytes.next().unwrap() as i16 - 48) * 2;
-        logging(format!("Character: {chr}   y: {y}")).await;
+        logging(format!("👂 Character: {chr}   y: {y}")).await;
 
         match chr {
             b'g' => { pieces.push( generate_giant(y as i16, Color::Red) ); },
@@ -728,7 +730,7 @@ async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) 
     }
 
     if response.len() > 0 {
-        logging(format!("Sending response")).await;
+        logging(format!("👂 Sending response")).await;
     
         stream.write( &response[..] ).await.unwrap();
         match stream.flush().await {
@@ -737,7 +739,7 @@ async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) 
         }
     }
 
-    logging(format!("Connection handled")).await;
+    logging(format!("👂 Connection handled")).await;
 }
 
 pub fn read_line(s : &str) -> Result<String> {
