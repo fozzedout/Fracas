@@ -131,7 +131,7 @@ async fn server(listener : TcpListener) {
     let mut pieces: Vec<Character> = Vec::new();
 
     loop {
-        let mut delay = Delay::new(Duration::from_millis(1_0)).fuse();
+        let mut delay = Delay::new(Duration::from_millis(10)).fuse();
         let nla_event = listener.accept().fuse();
         pin_mut!(nla_event);
 
@@ -183,6 +183,19 @@ async fn events(listening_port : u16) {
                                 continue;
                             },
                         };
+                        print_at(1, 1, 
+                            format!(
+                                "You are {:?}  |  Green {}    Red {}   ",
+                                piece_colour, 
+                                pieces
+                                    .iter()
+                                    .filter(|x| x.color == Color::Green)
+                                    .count(), 
+                                pieces
+                                    .iter()
+                                    .filter(|x| x.color == Color::Red)
+                                    .count() 
+                        ));
                         render_grid_pieces(5, 4, &pieces);
                     }
                 }
@@ -260,6 +273,8 @@ async fn events(listening_port : u16) {
                         }
                     },
                     CommandState::CharacterSelected(c) => {
+                        let col = if piece_colour == Color::Green { 'g' } else { 'r' };
+
                         let mut character = match c {
                             'b' => generate_barbarian(0, piece_colour),
                             'a' => generate_archer(0, piece_colour),
@@ -277,7 +292,7 @@ async fn events(listening_port : u16) {
                                 character.y = ((r_val - 48) * 2) as i16;
                                 // pieces.push(character);
 
-                                let code = format!("{c}{r}");
+                                let code = format!("{col}{c}{r}");
                                 let code = code.as_bytes();
                                 call(&code, &connection_address).await;
                                 command_state = CommandState::MainGame;
@@ -720,16 +735,19 @@ async fn handle_connection(mut stream: TcpStream, pieces : &mut Vec<Character>) 
     } else if request_str == "update" {
         response = bincode::serialize(&pieces).unwrap();
 
-    } else if request_str.len() == 2 {
+    } else if request_str.len() == 3 {
         let mut request_bytes = request_str.bytes();
+        let col = request_bytes.next().unwrap();
         let chr = request_bytes.next().unwrap();
         let y: i16 = (request_bytes.next().unwrap() as i16 - 48) * 2;
-        logging(format!("👂 Character: {chr}   y: {y}")).await;
+        let col = if col == b'r' { Color::Red } else { Color::Green };
+
+        logging(format!("👂 Character: {chr}   y: {y}    color: {col:?}")).await;
 
         match chr {
-            b'g' => { pieces.push( generate_giant(y as i16, Color::Red) ); },
-            b'b' => { pieces.push( generate_barbarian(y as i16, Color::Red) ); },
-            b'a' => { pieces.push( generate_archer(y as i16, Color::Red) ); },
+            b'g' => { pieces.push( generate_giant(y as i16, col) ); },
+            b'b' => { pieces.push( generate_barbarian(y as i16, col) ); },
+            b'a' => { pieces.push( generate_archer(y as i16, col) ); },
             _ => ()
         }
     }
